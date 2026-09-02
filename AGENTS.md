@@ -7,7 +7,7 @@ Android client (Compose, Material3) for syncing Rime configuration and user dict
 - Build: `.\gradlew.bat :app:assembleDebug`
 - Unit tests (JUnit4 + kotlinx-coroutines-test): `.\gradlew.bat :app:testDebugUnitTest`
 - Works with `--offline` once the Gradle distribution and deps are cached.
-- Toolchain: Gradle 8.13, AGP 8.13.2, Kotlin 2.2.21, Java 17, compileSdk/targetSdk 36, minSdk 28. No version catalog (dependencies are hardcoded strings in `app/build.gradle.kts`). No README, no CI, no lint config.
+- Toolchain: Gradle 9.7.1, AGP 9.4.0, Kotlin 2.4.10 (AGP 9 has built-in Kotlin — do NOT apply `org.jetbrains.kotlin.android`; only `org.jetbrains.kotlin.plugin.compose` is used), Java 17, compileSdk/targetSdk 36 (Android 16, capped deliberately — several libs were pinned to the last API-36-compatible versions: core-ktx 1.18.0, lifecycle 2.10.0, navigation-compose 2.9.8, okhttp 5.4.0, Compose BOM 2026.06.01), minSdk 28. No version catalog (dependencies are hardcoded strings in `app/build.gradle.kts`). No README, no CI, no lint config.
 
 ## Architecture
 
