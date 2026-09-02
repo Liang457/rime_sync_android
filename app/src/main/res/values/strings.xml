@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Rime同步</string>
+    <style name="Theme.RimeSync" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
