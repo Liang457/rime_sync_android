@@ -1,13 +1,10 @@
-name: Build Release
+name: Build Release APK
 
 on:
-  workflow_dispatch:
   push:
-    tags:
-      - "v*"
-
-permissions:
-  contents: write
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   build-release:
@@ -44,12 +41,5 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rime-sync-apk
+          name: rime-sync-release-apk
           path: app/build/outputs/apk/release/*.apk
-
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: app/build/outputs/apk/release/*.apk
-          generate_release_notes: true
