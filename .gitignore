@@ -10,3 +10,8 @@
 local.properties
 app/build
 build/
+
+# 签名文件，不要提交到仓库
+release.keystore.jks
+keystore.properties
+keystore_b64.txt

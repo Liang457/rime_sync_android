@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -6,15 +7,36 @@ plugins {
 }
 
 android {
-    namespace = "com.rimesync.android"
+    namespace = "cn.coolgk.rimesyncapp"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.rimesync.android"
+        applicationId = "cn.coolgk.rimesyncapp"
         minSdk = 28
         targetSdk = 36
         versionCode = 3
         versionName = "0.1.2"
+    }
+
+    signingConfigs {
+        create("release") {
+            val props = Properties()
+            val propsFile = rootProject.file("keystore.properties")
+            val envStoreFile = System.getenv("KEYSTORE_FILE")
+            // CI 优先读环境变量，本地读 keystore.properties（均不入库）
+            if (!envStoreFile.isNullOrBlank()) {
+                storeFile = rootProject.file(envStoreFile)
+                storePassword = System.getenv("KEYSTORE_PASSWORD").orEmpty()
+                keyAlias = System.getenv("KEY_ALIAS").orEmpty()
+                keyPassword = System.getenv("KEY_PASSWORD").orEmpty()
+            } else if (propsFile.exists()) {
+                propsFile.inputStream().use { props.load(it) }
+                storeFile = rootProject.file(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -24,6 +46,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            val releaseSigning = signingConfigs.getByName("release")
+            if (releaseSigning.storeFile?.exists() == true) {
+                signingConfig = releaseSigning
+            }
         }
     }
 
