@@ -1,10 +1,17 @@
 package com.rimesync.android.core
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import java.io.File
 import java.time.Instant
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 
 data class FileState(
     val hash: String,
@@ -26,28 +33,48 @@ object TimeUtils {
 /** 用户词库增量同步引擎，行为与 CLI 的 core/sync.py 对齐。 */
 object SyncEngine {
 
-    /** 计算本地设备 sync 目录状态。 */
-    suspend fun computeLocalState(store: RimeFileStore, device: String): Map<String, FileState> {
+    private const val PARALLEL_CONCURRENCY = 4
+    private const val PARALLEL_BYTES_LIMIT = 64L * 1024 * 1024
+
+    /** 计算本地设备 sync 目录状态；传入 [cache] 时可命中 (size, mtime) 不变的哈希，跳过重读。
+     * 逐文件并行计算，缓解 SAF 逐文件 IPC 的开销。 */
+    suspend fun computeLocalState(
+        store: RimeFileStore,
+        device: String,
+        cache: HashCache? = null,
+    ): Map<String, FileState> {
         val dir = "sync/$device"
         if (!store.isDirectory(dir)) return emptyMap()
-        val files = store.walkFiles(dir)
-        val state = HashMap<String, FileState>()
         val prefix = "$dir/"
-        for (rel in files) {
-            val name = rel.removePrefix(prefix)
-            if (name == "_manifest.json") continue
-            try {
-                val size = store.size(rel) ?: 0L
-                val mtime = store.lastModified(rel) ?: 0L
-                val data = store.readBytes(rel)
-                state[name] = FileState(
-                    hash = HashUtils.computeFileHash(data),
-                    size = size,
-                    modified = TimeUtils.epochToIso(mtime),
-                )
-            } catch (e: Exception) {
-                continue
-            }
+        val files = store.walkFilesWithStats(dir)
+        if (files.isEmpty()) return emptyMap()
+
+        val state = Collections.synchronizedMap(HashMap<String, FileState>())
+        val semaphore = Semaphore(PARALLEL_CONCURRENCY)
+        coroutineScope {
+            files.map { stat ->
+                async {
+                    semaphore.withPermit {
+                        val rel = stat.relPath
+                        val name = rel.removePrefix(prefix)
+                        if (name == "_manifest.json") return@withPermit
+                        try {
+                            val size = stat.size
+                            val mtime = stat.lastModified
+                            val hash = cache?.get(rel, size, mtime)
+                                ?: HashUtils.computeFileHash(store.readBytes(rel))
+                                    .also { cache?.put(rel, size, mtime, it) }
+                            state[name] = FileState(
+                                hash = hash,
+                                size = size,
+                                modified = TimeUtils.epochToIso(mtime),
+                            )
+                        } catch (e: Exception) {
+                            CoreLog.warn("无法计算文件哈希: $rel: ${e.message}")
+                        }
+                    }
+                }
+            }.awaitAll()
         }
         return state
     }
@@ -120,85 +147,129 @@ object SyncEngine {
         return names
     }
 
-    /** 增量上传当前设备的用户词库。 */
+    /** 增量上传当前设备的用户词库；并行上传，单个文件失败不影响整体。 */
     suspend fun syncUserdbUpload(
         store: RimeFileStore,
         api: ApiClient,
         device: String,
         tempDir: File,
+        cache: HashCache? = null,
     ): Map<String, Any> {
+        val start = System.currentTimeMillis()
+        CoreLog.info("增量上传用户词库（设备: $device）...")
         val remoteState = try {
             val result = api.getSyncInfo(device = device)
             remoteStateFromInfo(result.obj("data"))
         } catch (e: Exception) {
+            CoreLog.warn("无法获取服务端同步信息，回退到全量tar上传: ${e.message}")
             uploadSyncTar(store, api, device, tempDir)
             return mapOf("uploaded" to -1, "fallback_tar" to true)
         }
 
-        val localState = computeLocalState(store, device)
+        val localState = computeLocalState(store, device, cache)
         if (localState.isEmpty()) {
+            CoreLog.info("本地无用户词库文件")
             return mapOf("uploaded" to 0, "skipped" to 0)
         }
 
         val toUpload = diffSyncState(localState, remoteState).first
         if (toUpload.isEmpty()) {
+            CoreLog.info("所有文件已是最新 (${localState.size} 个文件)，无需上传")
             return mapOf("uploaded" to 0, "skipped" to localState.size)
         }
 
-        var success = 0
-        val failed = ArrayList<String>()
-        for (fname in toUpload) {
-            try {
-                val data = store.readBytes("sync/$device/$fname")
-                val tempFile = writeTemp(tempDir, fname, data)
-                api.uploadSyncFile(tempFile, fname, device)
-                tempFile.delete()
-                success++
-            } catch (e: Exception) {
-                failed.add(fname)
-            }
-        }
+        CoreLog.info("发现 ${toUpload.size} 个文件需要上传（共 ${localState.size} 个本地文件）")
+        val totalBytes = toUpload.sumOf { localState[it]?.size ?: 0L }
+        val parallel = toUpload.size > 1 && totalBytes <= PARALLEL_BYTES_LIMIT
+        val (success, failed) = uploadFiles(store, api, device, toUpload, parallel)
+        CoreLog.info("增量上传完成: $success/${toUpload.size} 成功, ${failed.size} 失败, 耗时 ${elapsedMs(start)}")
         return mapOf("uploaded" to success, "failed" to failed.size, "total" to toUpload.size)
     }
 
-    /** 增量下载其他设备的用户词库。 */
+    /** 逐个读取并上传文件；并行上传时读取一次内存中直接提交，免去临时文件往返。 */
+    private suspend fun uploadFiles(
+        store: RimeFileStore,
+        api: ApiClient,
+        device: String,
+        names: List<String>,
+        parallel: Boolean,
+    ): Pair<Int, List<String>> {
+        val success = AtomicInteger(0)
+        val failed = Collections.synchronizedList(ArrayList<String>())
+        val semaphore = Semaphore(if (parallel) PARALLEL_CONCURRENCY else 1)
+        coroutineScope {
+            names.map { fname ->
+                async {
+                    semaphore.withPermit {
+                        try {
+                            val data = store.readBytes("sync/$device/$fname")
+                            api.uploadSyncFileBytes(fname, device, data)
+                            success.incrementAndGet()
+                        } catch (e: Exception) {
+                            CoreLog.warn("上传文件 $fname 失败: ${e.message}")
+                            failed.add(fname)
+                        }
+                    }
+                }
+            }.awaitAll()
+        }
+        return success.get() to failed.toList()
+    }
+
+    /** 增量下载其他设备的用户词库；文件间并行下载，单文件/单设备失败不影响整体。 */
     suspend fun syncUserdbDownload(
         store: RimeFileStore,
         api: ApiClient,
         device: String,
+        cache: HashCache? = null,
     ): Map<String, Any> {
+        val start = System.currentTimeMillis()
+        CoreLog.info("增量下载其他设备的用户词库（当前设备: $device）...")
         val allDevices = deviceNames(api)
         if (allDevices.isEmpty()) throw RimeSyncException("无法获取设备列表")
 
         val otherDevices = allDevices.filter { it != device }
         if (otherDevices.isEmpty()) {
+            CoreLog.info("没有其他设备需要同步")
             return mapOf("devices" to 0, "downloaded" to 0, "skipped" to 0)
         }
 
-        var totalDownloaded = 0
+        CoreLog.info("发现 ${otherDevices.size} 个其他设备: ${otherDevices.joinToString()}")
+        val totalDownloaded = AtomicInteger(0)
         for (other in otherDevices) {
             try {
+                CoreLog.info("增量同步设备 $other...")
                 val result = api.getSyncInfo(device = other)
                 val remoteState = remoteStateFromInfo(result.obj("data"))
-                val localState = computeLocalState(store, other)
+                val localState = computeLocalState(store, other, cache)
                 val toDownload = diffSyncState(localState, remoteState).second
-                if (toDownload.isEmpty()) continue
-
-                for (fname in toDownload) {
-                    try {
-                        val data = api.downloadSyncFile(fname, other)
-                        SafePath.normalize("sync/$other/$fname")
-                        store.writeBytes("sync/$other/$fname", data)
-                        totalDownloaded++
-                    } catch (e: Exception) {
-                        // 单文件失败不影响整体
-                    }
+                if (toDownload.isEmpty()) {
+                    CoreLog.info("设备 $other: 所有文件已是最新")
+                    continue
+                }
+                CoreLog.info("设备 $other: ${toDownload.size} 个文件需要下载")
+                val semaphore = Semaphore(PARALLEL_CONCURRENCY)
+                coroutineScope {
+                    toDownload.map { fname ->
+                        async {
+                            semaphore.withPermit {
+                                try {
+                                    val data = api.downloadSyncFile(fname, other)
+                                    store.writeBytes("sync/$other/$fname", data)
+                                    totalDownloaded.incrementAndGet()
+                                } catch (e: Exception) {
+                                    CoreLog.warn("下载文件 $other/$fname 失败: ${e.message}")
+                                }
+                            }
+                        }
+                    }.awaitAll()
                 }
             } catch (e: Exception) {
-                // 设备处理失败则跳过
+                CoreLog.warn("处理设备 $other 时出错: ${e.message}，跳过此设备")
             }
         }
-        return mapOf("downloaded" to totalDownloaded)
+        CoreLog.info("增量下载完成: 共 ${totalDownloaded.get()} 个文件, 耗时 ${elapsedMs(start)}")
+        return mapOf("downloaded" to totalDownloaded.get())
     }
 
     /** 全量 tar 上传，失败回退逐个文件。 */
@@ -219,6 +290,7 @@ object SyncEngine {
         return try {
             val result = api.uploadSyncTar(tarFile, device)
             if (result.bool("success") != true) {
+                CoreLog.warn("tar上传失败，回退到逐个文件上传模式...")
                 fallbackUploadFiles(store, api, device, files, tempDir)
                 JsonObject(mapOf("success" to JsonPrimitive(true), "message" to JsonPrimitive("通过逐个文件上传完成")))
             } else {
@@ -256,4 +328,6 @@ object SyncEngine {
         file.writeBytes(data)
         return file
     }
+
+    private fun elapsedMs(start: Long): Long = System.currentTimeMillis() - start
 }

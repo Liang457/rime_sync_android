@@ -16,6 +16,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.File
 import java.io.IOException
@@ -40,7 +41,7 @@ class ApiClient(private val config: RimeSyncConfig) {
 
     private fun buildClient(): OkHttpClient {
         val builder = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(config.timeout.toLong(), TimeUnit.SECONDS)
             .writeTimeout(120, TimeUnit.SECONDS)
         if (!config.verifySsl) {
@@ -51,10 +52,9 @@ class ApiClient(private val config: RimeSyncConfig) {
         return builder.build()
     }
 
-    private fun baseRequest(method: String, endpoint: String): Request.Builder {
+    private fun baseRequest(endpoint: String): Request.Builder {
         val builder = Request.Builder()
             .url(config.serverUrl + endpoint)
-            .method(method, null)
         if (config.apiToken.isNotBlank()) {
             builder.header("X-Api-Token", config.apiToken)
         }
@@ -80,7 +80,9 @@ class ApiClient(private val config: RimeSyncConfig) {
                 val errorMsg = parseError(response, code)
                 if (code >= 500 && attempt < maxAttempts) {
                     onError?.invoke()
-                    delay((1L shl attempt) * 1000L)
+                    val waitMs = (1L shl attempt) * 1000L
+                    CoreLog.warn("服务器错误 $code (尝试 $attempt/$maxAttempts)，${waitMs / 1000}s后重试: $errorMsg")
+                    delay(waitMs)
                     continue
                 }
                 onError?.invoke()
@@ -88,9 +90,12 @@ class ApiClient(private val config: RimeSyncConfig) {
             } catch (e: IOException) {
                 onError?.invoke()
                 if (attempt >= maxAttempts) {
+                    CoreLog.error("${action}失败，已达最大重试次数: ${e.message}")
                     throw ApiErrorException("${action}失败，已达最大重试次数: ${e.message}", e)
                 }
-                delay((1L shl attempt) * 1000L)
+                val waitMs = (1L shl attempt) * 1000L
+                CoreLog.warn("${action}失败 (尝试 $attempt/$maxAttempts)，${waitMs / 1000}s后重试: ${e.message}")
+                delay(waitMs)
             } finally {
                 response?.close()
             }
@@ -115,10 +120,8 @@ class ApiClient(private val config: RimeSyncConfig) {
         timeout: Long? = null,
         retries: Int = config.retryCount,
     ): JsonObject {
-        val request = baseRequest(method, endpoint)
-        if (body != null) {
-            request.method(method, body)
-        }
+        val request = baseRequest(endpoint)
+        request.method(method, body)
         var url = request.build().url.toString()
         if (params != null && params.isNotEmpty()) {
             url = url + "?" + params.map { "${it.key}=${it.value}" }.joinToString("&")
@@ -138,7 +141,8 @@ class ApiClient(private val config: RimeSyncConfig) {
         params: Map<String, String>? = null,
         retries: Int = config.retryCount,
     ): ByteArray {
-        val request = baseRequest("GET", endpoint)
+        val request = baseRequest(endpoint)
+        request.method("GET", null)
         var url = request.build().url.toString()
         if (params != null && params.isNotEmpty()) {
             url = url + "?" + params.map { "${it.key}=${it.value}" }.joinToString("&")
@@ -156,7 +160,8 @@ class ApiClient(private val config: RimeSyncConfig) {
         target: File,
         params: Map<String, String>? = null,
     ): File {
-        val request = baseRequest("GET", endpoint)
+        val request = baseRequest(endpoint)
+        request.method("GET", null)
         var url = request.build().url.toString()
         if (params != null && params.isNotEmpty()) {
             url = url + "?" + params.map { "${it.key}=${it.value}" }.joinToString("&")
@@ -193,12 +198,17 @@ class ApiClient(private val config: RimeSyncConfig) {
 
     // ---- 端点 ----
 
-    suspend fun getDeviceList(): JsonObject = requestJson("GET", "/api/device/list")
+    suspend fun getDeviceList(): JsonObject {
+        CoreLog.info("获取设备列表...")
+        return requestJson("GET", "/api/device/list")
+    }
 
     suspend fun getSyncInfo(device: String? = null, since: String? = null): JsonObject {
         val params = HashMap<String, String>()
         if (device != null) params["device"] = device
         if (since != null) params["since"] = since
+        val desc = if (device != null) "device=$device" else "全部设备"
+        CoreLog.info("获取同步信息（$desc）...")
         return requestJson("GET", "/api/sync/info", params = params.ifEmpty { null })
     }
 
@@ -206,34 +216,55 @@ class ApiClient(private val config: RimeSyncConfig) {
         val params = HashMap<String, String>()
         if (exclude != null) params["exclude"] = exclude
         if (since != null) params["since"] = since
+        CoreLog.info("获取完整配置包信息...")
         return requestJson("GET", "/api/full_sync/info", params = params.ifEmpty { null })
     }
 
-    suspend fun uploadSyncTar(tar: File, device: String): JsonObject =
-        requestJson("POST", "/api/sync/upload/tar", body = multipart(
+    suspend fun uploadSyncTar(tar: File, device: String): JsonObject {
+        CoreLog.info("上传用户词库tar包（设备: $device）...")
+        return requestJson("POST", "/api/sync/upload/tar", body = multipart(
             "/api/sync/upload/tar", "sync_$device.tar", tar, "application/x-tar",
             mapOf("device" to device),
         ))
+    }
 
-    suspend fun uploadSyncFile(file: File, filename: String, device: String): JsonObject =
-        requestJson("POST", "/api/sync/upload/file", body = multipart(
+    suspend fun uploadSyncFile(file: File, filename: String, device: String): JsonObject {
+        CoreLog.info("上传用户词库文件: $filename（设备: $device）...")
+        return requestJson("POST", "/api/sync/upload/file", body = multipart(
             "/api/sync/upload/file", filename, file, "application/octet-stream",
             mapOf("device" to device, "filename" to filename),
         ))
+    }
 
-    suspend fun uploadFullSync(file: File, overwrite: Boolean): JsonObject =
-        requestJson("POST", "/api/full_sync/upload", body = multipart(
+    /** 直接以字节上传（免去临时文件写读往返），行为与 CLI 的逐文件上传一致。 */
+    suspend fun uploadSyncFileBytes(filename: String, device: String, data: ByteArray): JsonObject {
+        CoreLog.info("上传用户词库文件: $filename（设备: $device）...")
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("device", device)
+            .addFormDataPart("filename", filename)
+            .addFormDataPart("file", filename, data.toRequestBody("application/octet-stream".toMediaType()))
+            .build()
+        return requestJson("POST", "/api/sync/upload/file", body = body)
+    }
+
+    suspend fun uploadFullSync(file: File, overwrite: Boolean): JsonObject {
+        CoreLog.info("上传完整配置包: ${file.name}...")
+        return requestJson("POST", "/api/full_sync/upload", body = multipart(
             "/api/full_sync/upload", file.name, file, "application/x-tar",
             mapOf("overwrite" to overwrite.toString()),
         ))
+    }
 
-    suspend fun downloadSyncFile(filename: String, device: String): ByteArray =
-        requestBytes("/api/sync/get/$device/file/$filename")
+    suspend fun downloadSyncFile(filename: String, device: String): ByteArray {
+        CoreLog.info("下载用户词库文件: $filename（设备: $device）...")
+        return requestBytes("/api/sync/get/$device/file/$filename")
+    }
 
     suspend fun downloadFullSyncTar(exclude: String? = null, since: String? = null, target: File): File {
         val params = HashMap<String, String>()
         if (exclude != null) params["exclude"] = exclude
         if (since != null) params["since"] = since
+        CoreLog.info("下载完整配置包...")
         return downloadToFile("/api/full_sync/download", target, params.ifEmpty { null })
     }
 }

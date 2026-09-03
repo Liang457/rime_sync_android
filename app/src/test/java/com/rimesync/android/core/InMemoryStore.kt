@@ -1,9 +1,12 @@
 package com.rimesync.android.core
 
 /** 内存版 [RimeFileStore]，用于 JVM 单元测试。 */
-class InMemoryStore : RimeFileStore {
+open class InMemoryStore : RimeFileStore {
 
     val files = HashMap<String, ByteArray>()
+
+    /** 可选的 mtime 覆盖表；未设置时 lastModified 返回 0。 */
+    val mtimes = HashMap<String, Long>()
 
     override suspend fun listChildren(dirRelPath: String): List<FileEntry> {
         val prefix = SafePath.normalize(dirRelPath)
@@ -18,7 +21,7 @@ class InMemoryStore : RimeFileStore {
             children[first] = FileEntry(
                 name = first,
                 isDirectory = isDir,
-                lastModified = 0,
+                lastModified = mtimes[key] ?: 0L,
                 size = if (isDir) 0 else data.size.toLong(),
             )
         }
@@ -48,7 +51,7 @@ class InMemoryStore : RimeFileStore {
         files.remove(SafePath.normalize(relPath))
     }
 
-    override suspend fun lastModified(relPath: String): Long? = 0L
+    override suspend fun lastModified(relPath: String): Long? = mtimes[SafePath.normalize(relPath)] ?: 0L
 
     override suspend fun size(relPath: String): Long? = files[SafePath.normalize(relPath)]?.size?.toLong()
 
