@@ -4,10 +4,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,6 +38,16 @@ fun SyncScreen(viewModel: MainViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        if (state.backgroundSyncRunning) {
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                "后台自动同步进行中...",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+
         SectionCard("用户输入词库") {
             Text(
                 "快速：先下载其他设备变更，再上传本机词库。冲突时较新的修改时间胜出。",

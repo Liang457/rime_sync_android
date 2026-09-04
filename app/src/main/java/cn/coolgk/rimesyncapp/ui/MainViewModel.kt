@@ -3,12 +3,17 @@ package cn.coolgk.rimesyncapp.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import cn.coolgk.rimesyncapp.core.RimeSyncConfig
 import cn.coolgk.rimesyncapp.data.LogBuffer
 import cn.coolgk.rimesyncapp.data.SyncRepository
+import cn.coolgk.rimesyncapp.data.SyncScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 data class UiState(
@@ -18,6 +23,7 @@ data class UiState(
     val busyKey: String? = null,
     val error: String? = null,
     val lastMessage: String? = null,
+    val backgroundSyncRunning: Boolean = false,
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -30,6 +36,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch {
             _state.value = _state.value.copy(config = repo.loadConfig())
+        }
+        viewModelScope.launch {
+            WorkManager.getInstance(getApplication())
+                .getWorkInfosForUniqueWorkFlow(SyncScheduler.UNIQUE_WORK_NAME)
+                .map { infos ->
+                    infos.any { it.state == WorkInfo.State.RUNNING }
+                }
+                .distinctUntilChanged()
+                .collect { running ->
+                    _state.value = _state.value.copy(backgroundSyncRunning = running)
+                }
         }
     }
 

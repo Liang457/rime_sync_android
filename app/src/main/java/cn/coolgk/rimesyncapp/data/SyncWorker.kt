@@ -1,24 +1,20 @@
 package cn.coolgk.rimesyncapp.data
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.Context
-import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
-import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
-import cn.coolgk.rimesyncapp.R
+import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
 
 /**
  * 后台定时同步 Worker：增量上传本地用户词库 + 下载其他设备变更。
- * 使用前台通知防止长任务被系统终止。
+ * 以普通后台任务运行（WorkManager 周期调度），不启用前台服务，
+ * 避免后台启动前台服务受系统限制导致进程崩溃。
  */
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
         return try {
-            setForeground(createForegroundInfo())
             val repo = SyncRepository(applicationContext)
             val store = repo.getRimeStore()
                 ?: run {
@@ -37,36 +33,19 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             logInfo("后台同步下载完成: $download")
             logInfo("后台自动同步完成")
             Result.success()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logError("后台同步失败: ${e.message}")
-            Result.retry()
+            Result.failure()
         }
-    }
-
-    private fun createForegroundInfo(): ForegroundInfo {
-        val channelId = "rime_sync_background"
-        val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannel(
-            NotificationChannel(channelId, "Rime同步", NotificationManager.IMPORTANCE_LOW)
-        )
-        val notification = NotificationCompat.Builder(applicationContext, channelId)
-            .setContentTitle("Rime 同步")
-            .setContentText("正在后台同步用户词库...")
-            .setSmallIcon(R.drawable.ic_sync)
-            .setOngoing(true)
-            .build()
-        return ForegroundInfo(NOTIFICATION_ID, notification)
-    }
-
-    companion object {
-        private const val NOTIFICATION_ID = 1001
     }
 }
 
 /** 后台定时同步调度器。 */
 object SyncScheduler {
 
-    private const val UNIQUE_WORK_NAME = "rime_sync_periodic"
+    const val UNIQUE_WORK_NAME = "rime_sync_periodic"
 
     /** 按配置启用/停用周期同步。 */
     fun apply(context: Context, enabled: Boolean, intervalHours: Int) {
