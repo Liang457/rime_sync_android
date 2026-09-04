@@ -4,9 +4,11 @@ Android client (Compose, Material3) for syncing Rime configuration and user dict
 
 ## Commands
 
-- Build: `.\gradlew.bat :app:assembleDebug`
-- Unit tests (JUnit4 + kotlinx-coroutines-test): `.\gradlew.bat :app:testDebugUnitTest`
+- Build: `.\gradlew.bat :app:assembleDebug --no-daemon --console=plain`
+- Unit tests (JUnit4 + kotlinx-coroutines-test): `.\gradlew.bat :app:testDebugUnitTest --no-daemon --console=plain`
 - Works with `--offline` once the Gradle distribution and deps are cached.
+- **必须加 `--no-daemon`（加 `--console=plain` 避免 ANSI 乱码）。** 否则 Gradle 守护进程会持有 stdout 句柄，命令不输出结束信号，在工具调用里卡死。同一轮可多次复用输出，无需重复完整构建。
+- **不要动系统 Java 环境。** 系统默认是 Oracle Java 25（`C:\Program Files\Java\jdk-25.0.4.1`），用户要靠它跑 HMCL；`JAVA_HOME`/PATH 只在单次命令内临时覆盖（如 `$env:JAVA_HOME='...jdk-25.0.4.1'`），构建目标是 Java 17 字节码（`compileOptions`/`jvmTarget` = 17），在 JDK 21/25 下都能构建，无需改机器级环境变量。本机另装有 Temurin JDK 21（`C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot`）仅供备用。
 - Toolchain: Gradle 9.7.1, AGP 9.4.0, Kotlin 2.4.10 (AGP 9 has built-in Kotlin — do NOT apply `org.jetbrains.kotlin.android`; only `org.jetbrains.kotlin.plugin.compose` is used), Java 17, compileSdk/targetSdk 36 (Android 16, capped deliberately — several libs were pinned to the last API-36-compatible versions: core-ktx 1.18.0, lifecycle 2.10.0, navigation-compose 2.9.8, okhttp 5.4.0, Compose BOM 2026.06.01), minSdk 28. No version catalog (dependencies are hardcoded strings in `app/build.gradle.kts`). No README, no CI, no lint config.
 
 ## Architecture
