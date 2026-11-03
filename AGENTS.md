@@ -7,7 +7,7 @@ trime（同文输入法）个人 fork，基于上游 `v3.3.13`，内置 rime_ser
 
 ## 当前状态（2026-11-03）
 
-- 分支 `feat/m2-sync` fork 增量 3 commit：`932336a`（INTERNET + HTTP 明文放行）、
+- `main` 上的 fork 增量（同步相关 3 commit）：`932336a`（INTERNET + HTTP 明文放行）、
   `29f854c` + `fb37321`（`sync/` 包 + 4 挂载点 + MULTILINE 修复）；**真机端到端验证已通过**
   （vivo V2339A + PC 本机 rime_server：差量下载/删除传播/push/pull 合并/deploy/UI 全绿）。
 - 2026-11-03 晚：同步调度统一——删 `ServerSyncWorker` 独立周期任务，服务器
@@ -16,8 +16,9 @@ trime（同文输入法）个人 fork，基于上游 `v3.3.13`，内置 rime_ser
   二次 `WorkManager.initialize` 崩溃隐患。构建通过，真机验收待装包。
 - debug APK 便捷副本：`D:\rime-android\trime-3.3.13-debug-arm64.apk`
   （`com.osfans.trime.debug`，与官方版共存）。
-- 2026-11-03：fork 增量推送 origin（分支 `feat/m2-sync`），release tag `v3.3.13-7` 触发 CI
-  构建 Release（Release 名即 tag 名，APK 版本名 `v3.3.13-7-0-g<hash>`）。
+- 2026-11-03：fork 增量推送 origin（`main`），release tag `v3.3.13-7` 触发 CI
+  构建 Release（Release 名即 tag 名，APK 版本名 `v3.3.13-7-0-g<hash>`）；临时分支
+  `feat/m2-sync` 已并回 `main` 删除，**仓库只留 `main` + release tag，不开特性分支**。
 - 待办：真机验收调度统一改动；真实服务器上线后改地址复测。
 - 旧 Compose 客户端已退役：仓库 main 已是 fork 基线 `dd4bee2`，旧签名材料备份在
   `D:\rime-android\keystore-backup\`。
@@ -62,8 +63,9 @@ trime（同文输入法）个人 fork，基于上游 `v3.3.13`，内置 rime_ser
 
 ## CI（.github/workflows/build-release.yml）
 
-- `main` push / 手动触发：ubuntu 上编 release APK（`BUILD_ABI=arm64-v8a`，手动触发可传 `abi`
-  输入覆盖），JNI 缓存按 `:app:calculateNativeCacheHash` 键控，产物上传 artifact，**不发布 Release**。
+- `v*` tag push / Release 发布 / 手动触发：ubuntu 上编 release APK（`BUILD_ABI=arm64-v8a`，
+  手动触发可传 `abi` 输入覆盖），JNI 缓存按 `:app:calculateNativeCacheHash` 键控，产物上传
+  artifact 并自动附到同名 Release（tag 构建时自动创建）。
 - 签名走 GitHub secrets `KEYSTORE_BASE64` / `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD`
   （沿用旧 Compose 客户端仓库的同名 secrets，已存在，无需迁移）；写入 trime 原生格式的
   `keystore.properties`（`keyBase64=…`，构建时自行解码）。无 secrets 时产出未签名 APK。
@@ -72,6 +74,6 @@ trime（同文输入法）个人 fork，基于上游 `v3.3.13`，内置 rime_ser
 
 ## 上游更新流程
 
-`git fetch upstream` → 找到新 tag → rebase `feat/m2-sync`（= main）→ 重跑 symlink 内容修复 +
+`git fetch upstream` → 找到新 tag → rebase `main` → 重跑 symlink 内容修复 +
 lua.patch + fix-native-links.sh → 构建验证 → 打新 tag（版本名来自 `git describe --tags --long`，
 **tag 必须推到 origin** 否则 CI 产物版本名退化成裸 commit hash）→ push。
