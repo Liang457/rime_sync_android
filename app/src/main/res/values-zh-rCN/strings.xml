@@ -181,6 +181,8 @@
     <string name="forget_this_word">忘记该词</string>
     <string name="synchronization">同步</string>
     <string name="periodic_background_sync_interval">后台同步时间间隔（以分钟为单位）</string>
+    <string name="background_sync_allow_metered">允许后台通过流量同步</string>
+    <string name="background_sync_allow_metered_hint">关闭时，后台同步仅在 Wi-Fi 等不按流量计费的网络下运行</string>
     <string name="candidates_window">候选窗口</string>
     <string name="show_candidates_window">显示候选词窗口</string>
     <string name="general">常规</string>
@@ -257,7 +259,7 @@
     <string name="server_sync_api_token">API 令牌</string>
     <string name="server_sync_now">立即与服务器同步</string>
     <string name="server_sync_auto">定时服务器同步</string>
-    <string name="server_sync_auto_interval">服务器同步间隔</string>
+    <string name="server_sync_auto_follows_background">无独立定时：开启后台定时同步后，随每次后台同步一并执行</string>
     <string name="server_sync_last_summary">上次：%1$s · %2$s（%3$s）</string>
     <string name="server_sync_done">服务器同步完成：%1$s</string>
     <string name="server_sync_failed">服务器同步失败：%1$s</string>

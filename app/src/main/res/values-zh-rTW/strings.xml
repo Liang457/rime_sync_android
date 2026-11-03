@@ -182,6 +182,8 @@
     <string name="forget_this_word">忘記該詞</string>
     <string name="synchronization">同步</string>
     <string name="periodic_background_sync_interval">後台同步時間間隔（以分鐘為單位）</string>
+    <string name="background_sync_allow_metered">允許後台透過行動數據同步</string>
+    <string name="background_sync_allow_metered_hint">關閉時，後台同步僅在 Wi-Fi 等不按流量計費的網路下執行</string>
     <string name="candidates_window">候选視窗</string>
     <string name="show_candidates_window">顯示候選詞視窗</string>
     <string name="general">常規</string>
@@ -258,7 +260,7 @@
     <string name="server_sync_api_token">API 金鑰</string>
     <string name="server_sync_now">立即與伺服器同步</string>
     <string name="server_sync_auto">定時伺服器同步</string>
-    <string name="server_sync_auto_interval">伺服器同步間隔</string>
+    <string name="server_sync_auto_follows_background">無獨立定時：開啟後台定時同步後，隨每次後台同步一併執行</string>
     <string name="server_sync_last_summary">上次：%1$s · %2$s（%3$s）</string>
     <string name="server_sync_done">伺服器同步完成：%1$s</string>
     <string name="server_sync_failed">伺服器同步失敗：%1$s</string>

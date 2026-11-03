@@ -11,12 +11,10 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.EditTextPreference
 import androidx.preference.Preference
-import androidx.preference.SwitchPreferenceCompat
 import com.osfans.trime.R
 import com.osfans.trime.data.prefs.AppPrefs
 import com.osfans.trime.data.prefs.PreferenceDelegate
 import com.osfans.trime.sync.ServerSyncRepository
-import com.osfans.trime.sync.ServerSyncWorker
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
 import com.osfans.trime.ui.common.withLoadingDialog
 import com.osfans.trime.ui.main.MainViewModel
@@ -37,17 +35,14 @@ class SyncSettingsFragment : PaddingPreferenceFragment() {
     private val lastSyncDetail by prefs.lastSyncDetail
     private val lastSyncTime by prefs.lastSyncTime
 
-    private val autoSyncEnable = prefs.autoSync
+    private val backgroundSyncEnable = AppPrefs.defaultInstance().profile.periodicBackgroundSync
 
-    private val onAutoSyncChange =
-        PreferenceDelegate.OnChangeListener<Boolean> { _, _ ->
-            ServerSyncWorker.start(requireContext().applicationContext)
-        }
-
-    private val onAutoSyncIntervalChange =
-        PreferenceDelegate.OnChangeListener<Int> { _, _ ->
-            if (autoSyncEnable.getValue()) {
-                ServerSyncWorker.start(requireContext().applicationContext)
+    // Periodic server sync has no scheduler of its own: it rides on the periodic
+    // background sync, so re-enqueue that work to pick up the new constraints.
+    private val onServerConfigChange =
+        PreferenceDelegate.OnChangeListener<String> { _, _ ->
+            if (backgroundSyncEnable.getValue()) {
+                viewModel.restartBackgroundSyncWork.value = true
             }
         }
 
@@ -55,8 +50,8 @@ class SyncSettingsFragment : PaddingPreferenceFragment() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        prefs.autoSync.registerOnChangeListener(onAutoSyncChange)
-        prefs.autoSyncInterval.registerOnChangeListener(onAutoSyncIntervalChange)
+        prefs.serverUrl.registerOnChangeListener(onServerConfigChange)
+        prefs.apiToken.registerOnChangeListener(onServerConfigChange)
     }
 
     private fun provideLastSyncSummary(ctx: Context): String = if (lastSyncTime == 0L) {
@@ -133,22 +128,11 @@ class SyncSettingsFragment : PaddingPreferenceFragment() {
                     },
                 )
                 addPreference(
-                    SwitchPreferenceCompat(ctx).apply {
-                        key = AppPrefs.Network.AUTO_SYNC
+                    Preference(ctx).apply {
                         isIconSpaceReserved = false
                         setTitle(R.string.server_sync_auto)
-                        setDefaultValue(false)
-                    },
-                )
-                addPreference(
-                    EditTextIntPreference(ctx).apply {
-                        key = AppPrefs.Network.AUTO_SYNC_INTERVAL
-                        isIconSpaceReserved = false
-                        setTitle(R.string.server_sync_auto_interval)
-                        min = 5
-                        setDefaultValue(30)
-                        summaryProvider = EditTextIntPreference.SimpleSummaryProvider
-                        isEnabled = autoSyncEnable.getValue()
+                        setSummary(R.string.server_sync_auto_follows_background)
+                        isEnabled = false
                     },
                 )
             }
@@ -162,7 +146,7 @@ class SyncSettingsFragment : PaddingPreferenceFragment() {
 
     override fun onDestroy() {
         super.onDestroy()
-        prefs.autoSync.unregisterOnChangeListener(onAutoSyncChange)
-        prefs.autoSyncInterval.unregisterOnChangeListener(onAutoSyncIntervalChange)
+        prefs.serverUrl.unregisterOnChangeListener(onServerConfigChange)
+        prefs.apiToken.unregisterOnChangeListener(onServerConfigChange)
     }
 }

@@ -372,6 +372,7 @@ class AppPrefs(
             const val DATA_STORAGE_MODE = "profile_data_storage_mode"
             const val PERIODIC_BACKGROUND_SYNC = "periodic_background_sync"
             const val PERIODIC_BACKGROUND_SYNC_INTERVAL = "periodic_background_sync_interval"
+            const val PERIODIC_BACKGROUND_SYNC_ALLOW_METERED = "periodic_background_sync_allow_metered"
             const val LAST_BACKGROUND_SYNC_STATUS = "last_background_sync_status"
             const val LAST_BACKGROUND_SYNC_TIME = "last_background_sync_time"
         }
@@ -380,6 +381,7 @@ class AppPrefs(
         val externalRimeTreeUri = string(EXTERNAL_RIME_TREE_URI, "")
         val periodicBackgroundSync = bool(PERIODIC_BACKGROUND_SYNC, false)
         val periodicBackgroundSyncInterval = int(PERIODIC_BACKGROUND_SYNC_INTERVAL, 30)
+        val periodicBackgroundSyncAllowMetered = bool(PERIODIC_BACKGROUND_SYNC_ALLOW_METERED, false)
         val lastBackgroundSyncStatus = bool(LAST_BACKGROUND_SYNC_STATUS, false)
         val lastBackgroundSyncTime = long(LAST_BACKGROUND_SYNC_TIME, 0L)
     }
@@ -472,8 +474,6 @@ class AppPrefs(
         companion object {
             const val SERVER_URL = "network_sync_server_url"
             const val API_TOKEN = "network_sync_api_token"
-            const val AUTO_SYNC = "network_sync_auto_sync"
-            const val AUTO_SYNC_INTERVAL = "network_sync_auto_sync_interval"
             const val LAST_SYNC_STATUS = "network_sync_last_sync_status"
             const val LAST_SYNC_DETAIL = "network_sync_last_sync_detail"
             const val LAST_SYNC_TIME = "network_sync_last_sync_time"
@@ -481,8 +481,6 @@ class AppPrefs(
 
         val serverUrl = editText(R.string.server_sync_server_url, SERVER_URL, "")
         val apiToken = editText(R.string.server_sync_api_token, API_TOKEN, "")
-        val autoSync = switch(R.string.server_sync_auto, AUTO_SYNC, false)
-        val autoSyncInterval = int(R.string.server_sync_auto_interval, AUTO_SYNC_INTERVAL, 30, 5, 1440, "min")
         val lastSyncStatus = int(LAST_SYNC_STATUS, 0)
         val lastSyncDetail = string(LAST_SYNC_DETAIL, "")
         val lastSyncTime = long(LAST_SYNC_TIME, 0L)

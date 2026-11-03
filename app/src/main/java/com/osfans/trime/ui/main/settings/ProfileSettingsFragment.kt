@@ -50,7 +50,15 @@ class ProfileSettingsFragment : PaddingPreferenceFragment() {
 
     private val onBackgroundSyncEnable = PreferenceDelegate.OnChangeListener<Boolean> { _, v ->
         editSyncIntervalPreference.isEnabled = v
+        allowMeteredPreference.isEnabled = v
     }
+
+    private val onSyncScheduleChange =
+        PreferenceDelegate.OnChangeListener<Boolean> { _, _ ->
+            if (backgroundSyncEnable.getValue()) {
+                viewModel.restartBackgroundSyncWork.value = true
+            }
+        }
 
     private val onSyncIntervalChange =
         PreferenceDelegate.OnChangeListener<Int> { _, _ ->
@@ -72,6 +80,7 @@ class ProfileSettingsFragment : PaddingPreferenceFragment() {
     private lateinit var dataPathPreference: Preference
 
     private lateinit var editSyncIntervalPreference: EditTextIntPreference
+    private lateinit var allowMeteredPreference: SwitchPreferenceCompat
 
     private val storageAccess = StorageAccess(this)
 
@@ -79,6 +88,7 @@ class ProfileSettingsFragment : PaddingPreferenceFragment() {
         super.onCreate(savedInstanceState)
         prefs.periodicBackgroundSync.registerOnChangeListener(onBackgroundSyncEnable)
         prefs.periodicBackgroundSyncInterval.registerOnChangeListener(onSyncIntervalChange)
+        prefs.periodicBackgroundSyncAllowMetered.registerOnChangeListener(onSyncScheduleChange)
         prefs.externalRimeTreeUri.registerOnChangeListener(onDataPathChange)
         prefs.dataStorageMode.registerOnChangeListener(onStorageModeChange)
     }
@@ -312,6 +322,17 @@ class ProfileSettingsFragment : PaddingPreferenceFragment() {
                     },
                 )
                 addPreference(
+                    SwitchPreferenceCompat(ctx).apply {
+                        allowMeteredPreference = this
+                        key = AppPrefs.Profile.PERIODIC_BACKGROUND_SYNC_ALLOW_METERED
+                        isIconSpaceReserved = false
+                        setTitle(R.string.background_sync_allow_metered)
+                        setSummary(R.string.background_sync_allow_metered_hint)
+                        setDefaultValue(false)
+                        isEnabled = backgroundSyncEnable.getValue()
+                    },
+                )
+                addPreference(
                     Preference(ctx).apply {
                         isIconSpaceReserved = false
                         setTitle(R.string.server_sync)
@@ -374,6 +395,7 @@ class ProfileSettingsFragment : PaddingPreferenceFragment() {
         super.onDestroy()
         prefs.periodicBackgroundSync.unregisterOnChangeListener(onBackgroundSyncEnable)
         prefs.periodicBackgroundSyncInterval.unregisterOnChangeListener(onSyncIntervalChange)
+        prefs.periodicBackgroundSyncAllowMetered.unregisterOnChangeListener(onSyncScheduleChange)
         prefs.externalRimeTreeUri.unregisterOnChangeListener(onDataPathChange)
         prefs.dataStorageMode.unregisterOnChangeListener(onStorageModeChange)
     }

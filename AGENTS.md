@@ -5,10 +5,29 @@ trime（同文输入法）个人 fork，基于上游 `v3.3.13`，内置 rime_ser
 （Liang457/rime_sync_android），`upstream` = osfans/trime。fork 增量见根 `README.md` 与
 `D:\Users\23386\项目\rime-dev\M2-同文开工报告.md`（详细执行记录）。
 
+## 当前状态（2026-11-03）
+
+- 分支 `feat/m2-sync` fork 增量 3 commit：`932336a`（INTERNET + HTTP 明文放行）、
+  `29f854c` + `fb37321`（`sync/` 包 + 4 挂载点 + MULTILINE 修复）；**真机端到端验证已通过**
+  （vivo V2339A + PC 本机 rime_server：差量下载/删除传播/push/pull 合并/deploy/UI 全绿）。
+- 2026-11-03 晚：同步调度统一——删 `ServerSyncWorker` 独立周期任务，服务器
+  同步并入 `BackgroundSyncWork`（后台同步顺带执行）；服务器页「定时服务器同步/同步间隔」
+  改为灰字说明；新增「允许后台通过流量同步」开关（默认关）；顺带修 `BackgroundSyncWork`
+  二次 `WorkManager.initialize` 崩溃隐患。构建通过，真机验收待装包。
+- debug APK 便捷副本：`D:\rime-android\trime-3.3.13-debug-arm64.apk`
+  （`com.osfans.trime.debug`，与官方版共存）。
+- 2026-11-03：fork 增量推送 origin（分支 `feat/m2-sync`），release tag `v3.3.13-7` 触发 CI
+  构建 Release（Release 名即 tag 名，APK 版本名 `v3.3.13-7-0-g<hash>`）。
+- 待办：真机验收调度统一改动；真实服务器上线后改地址复测。
+- 旧 Compose 客户端已退役：仓库 main 已是 fork 基线 `dd4bee2`，旧签名材料备份在
+  `D:\rime-android\keystore-backup\`。
+
 ## 构建环境（关键约束）
 
 - **本仓库若检出在 `D:\Users\23386\项目\` 下无法构建**——AGP 硬性拒绝非 ASCII 路径。
-  构建专用 clone 在 `D:\rime-android\trime`（origin 同为本仓库），rime-dev 里的检出只作镜像浏览。
+  真实路径是 `D:\rime-android\trime`（构建必须在此 ASCII 路径跑）；rime-dev 工作区里的
+  `rime_sync_android\` 是指向它的 **NTFS junction**（2026-11-03 起），两边同一目录，
+  改哪边都一样，无需再手动同步。junction 挪位置后需重建（PowerShell `New-Item -ItemType Junction`）。
 - 构建环境脚本：`source /d/rime-android/env.sh`（JAVA_HOME=Temurin 25、ANDROID_HOME、
   GRADLE_USER_HOME 全部项目本地化；`BUILD_ABI=arm64-v8a`，置空则编全 4 个 ABI）。
 - 构建：`./gradlew :app:assembleDebug` 或 `make release`（后者自带 lua.patch 应用）。
@@ -31,7 +50,10 @@ trime（同文输入法）个人 fork，基于上游 `v3.3.13`，内置 rime_ser
 
 - `app/src/main/java/com/osfans/trime/sync/`：`ServerSyncApi`（OkHttp + 路径越界防护）、
   `ServerSyncRepository`（状态文件 `.server-sync-state.json`，revision+sha3 差量；librime 合并后
-  文件有变即 `deploy()`）、`ServerSyncWorker`（WorkManager 周期任务，默认关，间隔下限 5 分钟）。
+  文件有变即 `deploy()`）。**定时调度只有一处**（2026-11-03 起）：上游 `worker/BackgroundSyncWork`
+  （默认关，间隔下限 15 分钟）在本地同步成功且配置了服务器地址时顺带执行服务器同步；
+  「允许后台通过流量同步」（默认关）决定 UNMETERED/CONNECTED 约束，未配服务器不加网络
+  约束；独立的 `ServerSyncWorker` 已删（勿在 rebase 时捡回来）。
 - 对上游的挂载点只有 4 处（rebase 冲突面）：`AndroidManifest.xml`、`data/prefs/AppPrefs.kt`、
   `ui/main/NavigationRoute.kt`、`ui/main/settings/ProfileSettingsFragment.kt`，外加
   `app/build.gradle.kts` / `gradle/libs.versions.toml`（okhttp、commons-compress）。

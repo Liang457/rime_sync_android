@@ -182,6 +182,8 @@
     <string name="forget_this_word">Forget this word</string>
     <string name="synchronization">Synchronization</string>
     <string name="periodic_background_sync_interval">Interval of background syncing (in minutes)</string>
+    <string name="background_sync_allow_metered">Allow background sync on metered networks</string>
+    <string name="background_sync_allow_metered_hint">When off, background sync only runs on unmetered networks such as Wi-Fi</string>
     <string name="candidates_window">Candidates Window</string>
     <string name="show_candidates_window">Show candidates window</string>
     <string name="general">General</string>
@@ -258,7 +260,7 @@
     <string name="server_sync_api_token">API token</string>
     <string name="server_sync_now">Sync with server now</string>
     <string name="server_sync_auto">Periodic server sync</string>
-    <string name="server_sync_auto_interval">Server sync interval</string>
+    <string name="server_sync_auto_follows_background">No separate schedule: runs with every periodic background sync once that is enabled</string>
     <string name="server_sync_last_summary">Last: %1$s · %2$s (%3$s)</string>
     <string name="server_sync_done">Server sync finished: %1$s</string>
     <string name="server_sync_failed">Server sync failed: %1$s</string>
