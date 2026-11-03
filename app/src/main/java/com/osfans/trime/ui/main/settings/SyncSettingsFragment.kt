@@ -7,6 +7,7 @@ package com.osfans.trime.ui.main.settings
 
 import android.content.Context
 import android.os.Bundle
+import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.EditTextPreference
 import androidx.preference.Preference
@@ -22,7 +23,6 @@ import com.osfans.trime.ui.main.MainViewModel
 import com.osfans.trime.util.addCategory
 import com.osfans.trime.util.customFormatTimeInDefault
 import com.osfans.trime.util.toast
-import androidx.fragment.app.activityViewModels
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -59,19 +59,18 @@ class SyncSettingsFragment : PaddingPreferenceFragment() {
         prefs.autoSyncInterval.registerOnChangeListener(onAutoSyncIntervalChange)
     }
 
-    private fun provideLastSyncSummary(ctx: Context): String =
-        if (lastSyncTime == 0L) {
-            ""
-        } else {
-            val time = customFormatTimeInDefault("yyyy-MM-dd HH:mm", lastSyncTime)
-            val status =
-                when (lastSyncStatus) {
-                    1 -> ctx.getString(R.string.success)
-                    2 -> ctx.getString(R.string.failure)
-                    else -> "N/A"
-                }
-            ctx.getString(R.string.server_sync_last_summary, time, status, lastSyncDetail)
-        }
+    private fun provideLastSyncSummary(ctx: Context): String = if (lastSyncTime == 0L) {
+        ""
+    } else {
+        val time = customFormatTimeInDefault("yyyy-MM-dd HH:mm", lastSyncTime)
+        val status =
+            when (lastSyncStatus) {
+                1 -> ctx.getString(R.string.success)
+                2 -> ctx.getString(R.string.failure)
+                else -> "N/A"
+            }
+        ctx.getString(R.string.server_sync_last_summary, time, status, lastSyncDetail)
+    }
 
     private fun updateSyncNowSummary() {
         syncNowPreference?.summary = provideLastSyncSummary(requireContext())

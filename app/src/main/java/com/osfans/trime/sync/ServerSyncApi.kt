@@ -77,21 +77,19 @@ class ServerSyncApi(
         return Request.Builder().url(urlBuilder.build()).header("X-Api-Token", token).apply(builder).build()
     }
 
-    private fun parseError(body: okhttp3.ResponseBody?): String =
-        body?.string()?.let { raw ->
-            runCatching {
-                json.decodeFromString<JsonObject>(raw)["error"]?.toString()?.trim('"')
-            }.getOrNull() ?: raw.take(200)
-        } ?: "HTTP error"
+    private fun parseError(body: okhttp3.ResponseBody?): String = body?.string()?.let { raw ->
+        runCatching {
+            json.decodeFromString<JsonObject>(raw)["error"]?.toString()?.trim('"')
+        }.getOrNull() ?: raw.take(200)
+    } ?: "HTTP error"
 
-    private inline fun <reified T> executeForJson(request: Request): T =
-        client.newCall(request).execute().use { resp ->
-            val body = resp.body
-            if (!resp.isSuccessful || body == null) {
-                throw IOException("HTTP ${resp.code}: ${parseError(body)}")
-            }
-            json.decodeFromString<T>(body.string())
+    private inline fun <reified T> executeForJson(request: Request): T = client.newCall(request).execute().use { resp ->
+        val body = resp.body
+        if (!resp.isSuccessful || body == null) {
+            throw IOException("HTTP ${resp.code}: ${parseError(body)}")
         }
+        json.decodeFromString<T>(body.string())
+    }
 
     private inline fun executeForStream(request: Request, block: (InputStream, okhttp3.Response) -> Unit) {
         client.newCall(request).execute().use { resp ->

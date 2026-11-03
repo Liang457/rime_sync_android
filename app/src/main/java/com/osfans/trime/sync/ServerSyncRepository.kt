@@ -45,23 +45,21 @@ object ServerSyncRepository {
         val pulledFiles: Int = 0,
         val deployed: Boolean = false,
     ) {
-        fun detail(): String =
-            listOf(
-                "+$downloaded files",
-                "-$deleted files",
-                "push $pushedFiles",
-                "pull $pulledFiles",
-            ).joinToString(", ")
+        fun detail(): String = listOf(
+            "+$downloaded files",
+            "-$deleted files",
+            "push $pushedFiles",
+            "pull $pulledFiles",
+        ).joinToString(", ")
     }
 
     class SyncException(message: String) : IOException(message)
 
     private fun stateFile(root: File) = File(root, STATE_NAME)
 
-    private fun loadState(root: File): State =
-        stateFile(root).takeIf { it.isFile }
-            ?.runCatching { json.decodeFromString<State>(bufferedReader().readText()) }
-            ?.getOrNull() ?: State()
+    private fun loadState(root: File): State = stateFile(root).takeIf { it.isFile }
+        ?.runCatching { json.decodeFromString<State>(bufferedReader().readText()) }
+        ?.getOrNull() ?: State()
 
     private fun saveState(root: File, state: State) {
         val file = stateFile(root)
@@ -74,28 +72,26 @@ object ServerSyncRepository {
     }
 
     /** `sha3-256:<hex>` tag as used by the server manifest; null when SHA-3 is unavailable. */
-    private fun sha3Tag(file: File): String? =
-        runCatching {
-            val md = MessageDigest.getInstance("SHA3-256")
-            file.inputStream().buffered().use { input ->
-                val buffer = ByteArray(64 * 1024)
-                while (true) {
-                    val read = input.read(buffer)
-                    if (read < 0) break
-                    md.update(buffer, 0, read)
-                }
+    private fun sha3Tag(file: File): String? = runCatching {
+        val md = MessageDigest.getInstance("SHA3-256")
+        file.inputStream().buffered().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                md.update(buffer, 0, read)
             }
-            "sha3-256:" + md.digest().joinToString("") { "%02x".format(it) }
-        }.getOrNull()
+        }
+        "sha3-256:" + md.digest().joinToString("") { "%02x".format(it) }
+    }.getOrNull()
 
     /** Parse `installation_id` out of the librime-generated installation.yaml. */
-    private fun installationId(root: File): String? =
-        File(root, INSTALLATION_FILE).takeIf { it.isFile }
-            ?.runCatching {
-                Regex("""^\s*installation_id:\s*"?([^"\s]+)"?""", RegexOption.MULTILINE)
-                    .find(bufferedReader().readText())
-                    ?.groupValues?.get(1)
-            }?.getOrNull()?.takeIf { it.isNotEmpty() }
+    private fun installationId(root: File): String? = File(root, INSTALLATION_FILE).takeIf { it.isFile }
+        ?.runCatching {
+            Regex("""^\s*installation_id:\s*"?([^"\s]+)"?""", RegexOption.MULTILINE)
+                .find(bufferedReader().readText())
+                ?.groupValues?.get(1)
+        }?.getOrNull()?.takeIf { it.isNotEmpty() }
 
     /** Tar the files under [dir] with archive-relative paths, gzipped, into [dest]. */
     private fun tarDirectory(
@@ -119,102 +115,101 @@ object ServerSyncRepository {
      *
      * @param rime a ready-or-soon Rime session (created by the caller).
      */
-    suspend fun sync(rime: RimeSession): SyncResult =
-        withContext(Dispatchers.IO) {
-            val prefs = AppPrefs.defaultInstance().network
-            val serverUrl = prefs.serverUrl.getValue().trim()
-            val token = prefs.apiToken.getValue().trim()
-            if (serverUrl.isEmpty()) throw SyncException("Server URL is not configured")
-            val api = ServerSyncApi(serverUrl, token)
-            api.checkHealth()
+    suspend fun sync(rime: RimeSession): SyncResult = withContext(Dispatchers.IO) {
+        val prefs = AppPrefs.defaultInstance().network
+        val serverUrl = prefs.serverUrl.getValue().trim()
+        val token = prefs.apiToken.getValue().trim()
+        if (serverUrl.isEmpty()) throw SyncException("Server URL is not configured")
+        val api = ServerSyncApi(serverUrl, token)
+        api.checkHealth()
 
-            // --- 1. file diff & download ------------------------------------
-            val root = UserDataManager.userDataDir
-            val manifest = api.fetchManifest()
-            val state = loadState(root)
-            val haveState = state.revision >= 0
+        // --- 1. file diff & download ------------------------------------
+        val root = UserDataManager.userDataDir
+        val manifest = api.fetchManifest()
+        val state = loadState(root)
+        val haveState = state.revision >= 0
 
-            val downloads = mutableListOf<String>()
-            for ((rel, meta) in manifest.files) {
-                val local = ServerSyncPaths.resolve(root, rel)
-                if (!local.isFile) {
-                    downloads += rel
-                    continue
-                }
-                val unchanged =
-                    if (haveState) {
-                        state.files[rel] == meta.sha3
-                    } else {
-                        // No state yet (first sync): hash locally to skip identical files.
-                        sha3Tag(local)?.let { it == meta.sha3 } ?: false
-                    }
-                if (!unchanged) downloads += rel
+        val downloads = mutableListOf<String>()
+        for ((rel, meta) in manifest.files) {
+            val local = ServerSyncPaths.resolve(root, rel)
+            if (!local.isFile) {
+                downloads += rel
+                continue
             }
-            val deletions = state.files.keys.filterNot { it in manifest.files }
-
-            for (rel in deletions) {
-                val local = ServerSyncPaths.resolve(root, rel)
-                if (local.isFile) local.delete()
-                Timber.d("Server sync: deleted %s", rel)
-            }
-            when {
-                downloads.isEmpty() -> Unit
-                downloads.size == 1 -> api.downloadFile(downloads[0], ServerSyncPaths.resolve(root, downloads[0]))
-                else -> api.downloadFilesTar(downloads, root)
-            }
-
-            if (downloads.isNotEmpty() || deletions.isNotEmpty()) {
-                saveState(root, State(manifest.revision, manifest.files.mapValues { it.value.sha3 }))
-            }
-
-            // --- 2. user db push / pull / merge ------------------------------
-            Timber.i("Server sync: root=%s installation=%s", root, File(root, INSTALLATION_FILE))
-            val deviceId =
-                installationId(root)
-                    ?: throw SyncException("installation.yaml not found; deploy once before syncing")
-
-            // Generate the local snapshot and push it (server buckets by installation id).
-            val ok = rime.runOnReady { syncUserData() }
-            if (!ok) throw SyncException("Rime syncUserData failed")
-            val syncDir = ServerSyncPaths.resolve(root, "sync")
-            val devDir = ServerSyncPaths.resolve(syncDir, deviceId)
-            val snapshotFiles = devDir.walkTopDown().filter { it.isFile }.count()
-            var pushed = 0
-            if (snapshotFiles > 0) {
-                val tar = File.createTempFile("trime-userdb", ".tar.gz")
-                try {
-                    tarDirectory(devDir, tar)
-                    api.pushUserdb(deviceId, tar)
-                    pushed = snapshotFiles
-                } finally {
-                    tar.delete()
-                }
-            }
-
-            // Pull other devices' snapshots and merge them into the local user db.
-            val pulled = api.pullUserdb(deviceId, syncDir)
-            if (pulled > 0) {
-                val merged = rime.runOnReady { syncUserData() }
-                if (!merged) throw SyncException("Rime merge sync failed")
-            }
-
-            // --- 3. redeploy on distributed-file changes ---------------------
-            val deployed =
-                if (downloads.isNotEmpty() || deletions.isNotEmpty()) {
-                    rime.runOnReady { deploy() }
-                    true
+            val unchanged =
+                if (haveState) {
+                    state.files[rel] == meta.sha3
                 } else {
-                    false
+                    // No state yet (first sync): hash locally to skip identical files.
+                    sha3Tag(local)?.let { it == meta.sha3 } ?: false
                 }
-
-            // Record the round for the settings summary (manual syncs included).
-            AppPrefs.defaultInstance().network.lastSyncStatus.setValue(1)
-            AppPrefs.defaultInstance().network.lastSyncDetail.setValue(
-                listOf(downloads.size, deletions.size, pushed, pulled, if (deployed) "deploy" else "")
-                    .joinToString("/") { it.toString() }.removeSuffix("/"),
-            )
-            AppPrefs.defaultInstance().network.lastSyncTime.setValue(System.currentTimeMillis())
-
-            SyncResult(downloads.size, deletions.size, pushed, pulled, deployed)
+            if (!unchanged) downloads += rel
         }
+        val deletions = state.files.keys.filterNot { it in manifest.files }
+
+        for (rel in deletions) {
+            val local = ServerSyncPaths.resolve(root, rel)
+            if (local.isFile) local.delete()
+            Timber.d("Server sync: deleted %s", rel)
+        }
+        when {
+            downloads.isEmpty() -> Unit
+            downloads.size == 1 -> api.downloadFile(downloads[0], ServerSyncPaths.resolve(root, downloads[0]))
+            else -> api.downloadFilesTar(downloads, root)
+        }
+
+        if (downloads.isNotEmpty() || deletions.isNotEmpty()) {
+            saveState(root, State(manifest.revision, manifest.files.mapValues { it.value.sha3 }))
+        }
+
+        // --- 2. user db push / pull / merge ------------------------------
+        Timber.i("Server sync: root=%s installation=%s", root, File(root, INSTALLATION_FILE))
+        val deviceId =
+            installationId(root)
+                ?: throw SyncException("installation.yaml not found; deploy once before syncing")
+
+        // Generate the local snapshot and push it (server buckets by installation id).
+        val ok = rime.runOnReady { syncUserData() }
+        if (!ok) throw SyncException("Rime syncUserData failed")
+        val syncDir = ServerSyncPaths.resolve(root, "sync")
+        val devDir = ServerSyncPaths.resolve(syncDir, deviceId)
+        val snapshotFiles = devDir.walkTopDown().filter { it.isFile }.count()
+        var pushed = 0
+        if (snapshotFiles > 0) {
+            val tar = File.createTempFile("trime-userdb", ".tar.gz")
+            try {
+                tarDirectory(devDir, tar)
+                api.pushUserdb(deviceId, tar)
+                pushed = snapshotFiles
+            } finally {
+                tar.delete()
+            }
+        }
+
+        // Pull other devices' snapshots and merge them into the local user db.
+        val pulled = api.pullUserdb(deviceId, syncDir)
+        if (pulled > 0) {
+            val merged = rime.runOnReady { syncUserData() }
+            if (!merged) throw SyncException("Rime merge sync failed")
+        }
+
+        // --- 3. redeploy on distributed-file changes ---------------------
+        val deployed =
+            if (downloads.isNotEmpty() || deletions.isNotEmpty()) {
+                rime.runOnReady { deploy() }
+                true
+            } else {
+                false
+            }
+
+        // Record the round for the settings summary (manual syncs included).
+        AppPrefs.defaultInstance().network.lastSyncStatus.setValue(1)
+        AppPrefs.defaultInstance().network.lastSyncDetail.setValue(
+            listOf(downloads.size, deletions.size, pushed, pulled, if (deployed) "deploy" else "")
+                .joinToString("/") { it.toString() }.removeSuffix("/"),
+        )
+        AppPrefs.defaultInstance().network.lastSyncTime.setValue(System.currentTimeMillis())
+
+        SyncResult(downloads.size, deletions.size, pushed, pulled, deployed)
+    }
 }
