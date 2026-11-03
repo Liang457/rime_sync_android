@@ -92,7 +92,8 @@ object ServerSyncRepository {
     private fun installationId(root: File): String? =
         File(root, INSTALLATION_FILE).takeIf { it.isFile }
             ?.runCatching {
-                Regex("""^\s*installation_id:\s*"?([^"\s]+)"?""").find(bufferedReader().readText())
+                Regex("""^\s*installation_id:\s*"?([^"\s]+)"?""", RegexOption.MULTILINE)
+                    .find(bufferedReader().readText())
                     ?.groupValues?.get(1)
             }?.getOrNull()?.takeIf { it.isNotEmpty() }
 
@@ -167,6 +168,7 @@ object ServerSyncRepository {
             }
 
             // --- 2. user db push / pull / merge ------------------------------
+            Timber.i("Server sync: root=%s installation=%s", root, File(root, INSTALLATION_FILE))
             val deviceId =
                 installationId(root)
                     ?: throw SyncException("installation.yaml not found; deploy once before syncing")
@@ -204,6 +206,14 @@ object ServerSyncRepository {
                 } else {
                     false
                 }
+
+            // Record the round for the settings summary (manual syncs included).
+            AppPrefs.defaultInstance().network.lastSyncStatus.setValue(1)
+            AppPrefs.defaultInstance().network.lastSyncDetail.setValue(
+                listOf(downloads.size, deletions.size, pushed, pulled, if (deployed) "deploy" else "")
+                    .joinToString("/") { it.toString() }.removeSuffix("/"),
+            )
+            AppPrefs.defaultInstance().network.lastSyncTime.setValue(System.currentTimeMillis())
 
             SyncResult(downloads.size, deletions.size, pushed, pulled, deployed)
         }

@@ -24,6 +24,7 @@ import com.osfans.trime.util.customFormatTimeInDefault
 import com.osfans.trime.util.toast
 import androidx.fragment.app.activityViewModels
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 /**
  * Settings for syncing with the self-hosted rime_server (fork feature, see the M2 plan):
@@ -116,9 +117,14 @@ class SyncSettingsFragment : PaddingPreferenceFragment() {
                                     runCatching { ServerSyncRepository.sync(rime) }
                                         .onSuccess { result ->
                                             updateSyncNowSummary()
+                                            Timber.i("Server sync ok: %s", result.detail())
                                             ctx.toast(ctx.getString(R.string.server_sync_done, result.detail()))
                                         }.onFailure { e ->
+                                            prefs.lastSyncStatus.setValue(2)
+                                            prefs.lastSyncDetail.setValue(e.message ?: e.javaClass.simpleName)
+                                            prefs.lastSyncTime.setValue(System.currentTimeMillis())
                                             updateSyncNowSummary()
+                                            Timber.e(e, "Server sync failed")
                                             ctx.toast(ctx.getString(R.string.server_sync_failed, e.message ?: e.javaClass.simpleName))
                                         }
                                 }
