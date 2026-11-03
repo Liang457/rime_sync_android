@@ -22,7 +22,7 @@ trime（同文输入法）个人 fork，基于上游 `v3.3.13`，内置 rime_ser
 - 机器未开开发者模式 → 16 处 git symlink（`app/src/main/assets/shared/*` 等）checkout 成
   「目标路径文本」，`git status` 恒显示 modified；`fastlane` icon、
   `build-logic/gradle/wrapper/gradle-wrapper.properties` 同理。rebase 上游后：`git checkout -- .`
-  再重新做内容修复（把各 symlink 的目标内容复制回这些文件，脚本当年是一次性内联命令，无存档）。
+  再重跑内容修复（一行脚本存档在 `D:\Users\23386\项目\rime-dev\env\README.md` §trime 仓库注意事项）。
 - `librime-lua-deps` 需先打 `patches/lua.patch`：`git apply --directory=app/src/main/jni/librime-lua-deps patches/lua.patch`。
 - native 插件在 Windows 无符号链接权限时需 NTFS junction（无需管理员）：
   `sh /d/rime-android/fix-native-links.sh`（junction 存绝对路径，**仓库挪位置后要重跑**）。
