@@ -250,4 +250,16 @@
     <string name="word_segment">分词</string>
     <string name="star_success">收藏成功</string>
     <string name="ignore_system_gesture_insets">忽略系统手势边衬区</string>
+
+    <!-- 服务器同步（fork：自建 rime_server） -->
+    <string name="server_sync">词库服务器同步</string>
+    <string name="server_sync_server_url">服务器地址</string>
+    <string name="server_sync_api_token">API 令牌</string>
+    <string name="server_sync_now">立即与服务器同步</string>
+    <string name="server_sync_auto">定时服务器同步</string>
+    <string name="server_sync_auto_interval">服务器同步间隔</string>
+    <string name="server_sync_last_summary">上次：%1$s · %2$s（%3$s）</string>
+    <string name="server_sync_done">服务器同步完成：%1$s</string>
+    <string name="server_sync_failed">服务器同步失败：%1$s</string>
+    <string name="server_sync_settings_hint">服务器地址、令牌与用户词库同步</string>
 </resources>

@@ -11,6 +11,7 @@ import android.provider.DocumentsContract
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.findNavController
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.SwitchPreferenceCompat
@@ -23,6 +24,7 @@ import com.osfans.trime.data.prefs.PreferenceDelegate
 import com.osfans.trime.ui.common.PaddingPreferenceFragment
 import com.osfans.trime.ui.common.withLoadingDialog
 import com.osfans.trime.ui.main.MainViewModel
+import com.osfans.trime.ui.main.NavigationRoute
 import com.osfans.trime.util.ResourceUtils
 import com.osfans.trime.util.addCategory
 import com.osfans.trime.util.addPreference
@@ -307,6 +309,17 @@ class ProfileSettingsFragment : PaddingPreferenceFragment() {
                         setDefaultValue(30)
                         summaryProvider = EditTextIntPreference.SimpleSummaryProvider
                         isEnabled = backgroundSyncEnable.getValue()
+                    },
+                )
+                addPreference(
+                    Preference(ctx).apply {
+                        isIconSpaceReserved = false
+                        setTitle(R.string.server_sync)
+                        setSummary(R.string.server_sync_settings_hint)
+                        setOnPreferenceClickListener {
+                            findNavController().navigate(NavigationRoute.ServerSync)
+                            true
+                        }
                     },
                 )
             }

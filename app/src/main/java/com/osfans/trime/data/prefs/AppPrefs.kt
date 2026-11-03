@@ -50,6 +50,7 @@ class AppPrefs(
     val candidates = Candidates(shared).register()
     val clipboard = Clipboard(shared).register()
     val advanced = Advanced(shared).register()
+    val network = Network(shared).register()
 
     @Keep
     private val onSharedPreferenceChangeListener =
@@ -460,6 +461,31 @@ class AppPrefs(
             IGNORE_SYSTEM_GESTURE_INSETS,
             false,
         )
+    }
+
+    /**
+     *  Wrapper class of self-hosted server sync (fork: M2 built-in sync client).
+     */
+    class Network(
+        shared: SharedPreferences,
+    ) : PreferenceDelegateOwner(shared, R.string.server_sync) {
+        companion object {
+            const val SERVER_URL = "network_sync_server_url"
+            const val API_TOKEN = "network_sync_api_token"
+            const val AUTO_SYNC = "network_sync_auto_sync"
+            const val AUTO_SYNC_INTERVAL = "network_sync_auto_sync_interval"
+            const val LAST_SYNC_STATUS = "network_sync_last_sync_status"
+            const val LAST_SYNC_DETAIL = "network_sync_last_sync_detail"
+            const val LAST_SYNC_TIME = "network_sync_last_sync_time"
+        }
+
+        val serverUrl = editText(R.string.server_sync_server_url, SERVER_URL, "")
+        val apiToken = editText(R.string.server_sync_api_token, API_TOKEN, "")
+        val autoSync = switch(R.string.server_sync_auto, AUTO_SYNC, false)
+        val autoSyncInterval = int(R.string.server_sync_auto_interval, AUTO_SYNC_INTERVAL, 30, 5, 1440, "min")
+        val lastSyncStatus = int(LAST_SYNC_STATUS, 0)
+        val lastSyncDetail = string(LAST_SYNC_DETAIL, "")
+        val lastSyncTime = long(LAST_SYNC_TIME, 0L)
     }
 
     @RequiresApi(Build.VERSION_CODES.N)

@@ -251,4 +251,16 @@
     <string name="word_segment">Word segment</string>
     <string name="star_success">Star success</string>
     <string name="ignore_system_gesture_insets">Ignore system gesture insets</string>
+
+    <!-- Server sync (fork: self-hosted rime_server) -->
+    <string name="server_sync">Server sync</string>
+    <string name="server_sync_server_url">Server URL</string>
+    <string name="server_sync_api_token">API token</string>
+    <string name="server_sync_now">Sync with server now</string>
+    <string name="server_sync_auto">Periodic server sync</string>
+    <string name="server_sync_auto_interval">Server sync interval</string>
+    <string name="server_sync_last_summary">Last: %1$s · %2$s (%3$s)</string>
+    <string name="server_sync_done">Server sync finished: %1$s</string>
+    <string name="server_sync_failed">Server sync failed: %1$s</string>
+    <string name="server_sync_settings_hint">Server URL, token, user db sync</string>
 </resources>
