@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2026 Cool-GK
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Fork CI: build a (signed) release APK on every push to main.
+# Replaces the upstream workflows (commit-ci / nightly-ci / release-ci), which
+# are tuned for osfans/trime (multi-OS matrix, GitHub Releases). This fork only
+# needs the signed APK as an artifact. When rebasing onto a new upstream tag,
+# check upstream's .github/workflows for changed build steps and port them here.
+
+name: Build Release APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      abi:
+        description: 'Comma-separated ABIs, e.g. arm64-v8a (default) or armeabi-v7a,arm64-v8a,x86,x86_64 for all'
+        required: false
+        default: 'arm64-v8a'
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    env:
+      # Target device is arm64-v8a; building all 4 ABIs roughly doubles native
+      # build time (librime per-ABI). Override via the workflow_dispatch input.
+      BUILD_ABI: ${{ inputs.abi || 'arm64-v8a' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          # full history + tags, so `git describe --tags --long` yields the
+          # versionName (v3.3.13-<n>-g<sha>) instead of a bare commit hash
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+          # will restore cache of dependencies and wrappers
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools cmake;4.1.2'
+
+      - name: Calculate JNI cache hash
+        id: cache-hash
+        run: ./gradlew :app:calculateNativeCacheHash
+
+      # Cache the compiled native libs so only librime/lua/etc. changes trigger
+      # a full native rebuild; otherwise assembly reuses app/prebuilt (~minutes).
+      - name: Fetch JNI cache
+        uses: actions/cache@v6
+        id: jni-cache
+        with:
+          path: app/prebuilt
+          key: ${{ runner.os }}-trime-jni-release-${{ steps.cache-hash.outputs.native-cache-hash }}
+
+      - name: Restore keystore from secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "KEYSTORE_BASE64 not set — the release APK will be UNSIGNED"
+            exit 0
+          fi
+          # keystore.properties is trime's native signing format (gitignored);
+          # keyBase64 is decoded by the build itself, no temp keystore file needed
+          {
+            echo "keyBase64=$KEYSTORE_BASE64"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Build release APK
+        run: make release
+
+      - name: Add JNI cache
+        if: ${{ !steps.jni-cache.outputs.cache-hit }}
+        run: cp -R app/build/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib app/prebuilt
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: trime-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 90
